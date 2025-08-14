@@ -14,14 +14,20 @@
 //==============================================================================
 /**
 */
-class DrumDecapitatorAudioProcessorEditor  : public juce::AudioProcessorEditor
+struct SliderParamInfo {
+    juce::Slider* slider;
+    const char* paramID;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+};
+
+class DrumDecapitatorAudioProcessorEditor : public juce::AudioProcessorEditor
 {
 public:
-    DrumDecapitatorAudioProcessorEditor (DrumDecapitatorAudioProcessor&);
+    DrumDecapitatorAudioProcessorEditor(DrumDecapitatorAudioProcessor&);
     ~DrumDecapitatorAudioProcessorEditor() override;
 
     //==============================================================================
-    void paint (juce::Graphics&) override;
+    void paint(juce::Graphics&) override;
     void resized() override;
 
 private:
@@ -31,9 +37,10 @@ private:
     juce::Slider offsetSlider, transientSlider, sustainSlider;
     juce::Slider mixSlider;
     juce::Slider bufferSizeSlider;
-	juce::Slider clipperCurveSlider, clipperThresholdSlider;
+    juce::Slider clipperCurveSlider, clipperThresholdSlider;
     juce::ToggleButton deltaButton;
-    
+
+    std::vector<SliderParamInfo> sliders;
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;

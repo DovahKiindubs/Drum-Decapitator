@@ -13,6 +13,7 @@
 DrumDecapitatorAudioProcessorEditor::DrumDecapitatorAudioProcessorEditor (DrumDecapitatorAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
+    /*
     addAndMakeVisible(attackSlider);
     attackSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
     attackSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 20);
@@ -61,7 +62,24 @@ DrumDecapitatorAudioProcessorEditor::DrumDecapitatorAudioProcessorEditor (DrumDe
     mixAttachment = std::make_unique<SliderAttachment>(
         audioProcessor.parameters, "mix", mixSlider
     );
+    */
 
+    sliders.emplace_back(SliderParamInfo{ &attackSlider,      "att1" });
+    sliders.emplace_back(SliderParamInfo{ &deltaAttackSlider, "deltaAtk" });
+    sliders.emplace_back(SliderParamInfo{ &releaseSlider,     "rel1" });
+    sliders.emplace_back(SliderParamInfo{ &offsetSlider,      "offset" });
+    sliders.emplace_back(SliderParamInfo{ &transientSlider,   "transient" });
+    sliders.emplace_back(SliderParamInfo{ &sustainSlider,     "sustain" });
+    sliders.emplace_back(SliderParamInfo{ &mixSlider,         "mix" });
+
+    for (auto& info : sliders)
+    {
+        addAndMakeVisible(*info.slider);
+        info.slider->setSliderStyle(juce::Slider::RotaryVerticalDrag);
+        info.slider->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 20);
+        info.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+            audioProcessor.parameters, info.paramID, *info.slider);
+    }
 
     // Set component names for accessibility
     attackSlider.setName("Attack");
