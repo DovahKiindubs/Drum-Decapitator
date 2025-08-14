@@ -13,56 +13,6 @@
 DrumDecapitatorAudioProcessorEditor::DrumDecapitatorAudioProcessorEditor (DrumDecapitatorAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    /*
-    addAndMakeVisible(attackSlider);
-    attackSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
-    attackSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 20);
-    attackAttachment = std::make_unique<SliderAttachment>(
-        audioProcessor.parameters, "att1", attackSlider
-    );
-
-    addAndMakeVisible(deltaAttackSlider);
-    deltaAttackSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
-    deltaAttackSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 20);
-    deltaAttackAttachment = std::make_unique<SliderAttachment>(
-        audioProcessor.parameters, "deltaAtk", deltaAttackSlider
-    );
-
-    addAndMakeVisible(releaseSlider);
-    releaseSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
-    releaseSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 20);
-    releaseAttachment = std::make_unique<SliderAttachment>(
-        audioProcessor.parameters, "rel1", releaseSlider
-    );
-
-    addAndMakeVisible(offsetSlider);
-    offsetSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
-    offsetSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 20);
-    offsetAttachment = std::make_unique<SliderAttachment>(
-        audioProcessor.parameters, "offset", offsetSlider
-    );
-
-    addAndMakeVisible(transientSlider);
-    transientSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
-    transientSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 20);
-    transientAttachment = std::make_unique<SliderAttachment>(
-        audioProcessor.parameters, "transient", transientSlider
-    );
-
-    addAndMakeVisible(sustainSlider);
-    sustainSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
-    sustainSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 20);
-    sustainAttachment = std::make_unique<SliderAttachment>(
-        audioProcessor.parameters, "sustain", sustainSlider
-    );
-
-    addAndMakeVisible(mixSlider);
-    mixSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
-    mixSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 20);
-    mixAttachment = std::make_unique<SliderAttachment>(
-        audioProcessor.parameters, "mix", mixSlider
-    );
-    */
 
     sliders.emplace_back(SliderParamInfo{ &attackSlider,      "att1" });
     sliders.emplace_back(SliderParamInfo{ &deltaAttackSlider, "deltaAtk" });
