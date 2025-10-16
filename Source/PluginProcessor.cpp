@@ -44,11 +44,33 @@ DrumDecapitatorAudioProcessor::DrumDecapitatorAudioProcessor()
             juce::NormalisableRange<float>(-1.0f, 2.0f, 0.01f),
             0.0f
         ),
+        // Per-band transient shaper params
+        std::make_unique<juce::AudioParameterFloat>(
+            "transientLow", "Transient Low",
+            juce::NormalisableRange<float>(-1.0f, 2.0f, 0.01f), 0.0f),
+        std::make_unique<juce::AudioParameterFloat>(
+            "sustainLow", "Sustain Low",
+            juce::NormalisableRange<float>(-1.0f, 2.0f, 0.01f), 0.0f),
+        std::make_unique<juce::AudioParameterFloat>(
+            "transientHigh", "Transient High",
+            juce::NormalisableRange<float>(-1.0f, 2.0f, 0.01f), 0.0f),
+        std::make_unique<juce::AudioParameterFloat>(
+            "sustainHigh", "Sustain High",
+            juce::NormalisableRange<float>(-1.0f, 2.0f, 0.01f), 0.0f),
+        // Mute / Solo
+        std::make_unique<juce::AudioParameterBool>("lowMute",  "Low Mute",  false),
+        std::make_unique<juce::AudioParameterBool>("lowSolo",  "Low Solo",  false),
+        std::make_unique<juce::AudioParameterBool>("highMute", "High Mute", false),
+        std::make_unique<juce::AudioParameterBool>("highSolo", "High Solo", false),
         std::make_unique<juce::AudioParameterFloat>(
             "mix", "Mix",
             juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f),
             1.0f
         ),
+        std::make_unique<juce::AudioParameterFloat>(
+            "CrossoverFreq", "Crossover Frequency",
+            juce::NormalisableRange<float>(20.0f, 20000.0f, 0.1f),
+            800.0f),
         std::make_unique<juce::AudioParameterBool>("delta", "Delta", false),
         std::make_unique<juce::AudioParameterFloat>(
             "clipperCurve", "Clipper Curve",
@@ -72,11 +94,16 @@ DrumDecapitatorAudioProcessor::DrumDecapitatorAudioProcessor()
             [](const juce::String& text) {
                 return text.getFloatValue(); 
             })
+
 		}),
-            waveViewer(1)
+            waveViewer(1), InputViewer(1), CurveViewer(1)
 {
     waveViewer.setRepaintRate(30);
-    waveViewer.setBufferSize(256);
+    waveViewer.setBufferSize(512);
+    InputViewer.setRepaintRate(30);
+    InputViewer.setBufferSize(512);
+    CurveViewer.setRepaintRate(30);
+    CurveViewer.setBufferSize(512);
 }
 
 DrumDecapitatorAudioProcessor::~DrumDecapitatorAudioProcessor()
@@ -152,12 +179,30 @@ void DrumDecapitatorAudioProcessor::prepareToPlay (double sampleRate, int sample
     for (int i = 0; i < 2; ++i) {
         mEnv[i].init(static_cast<float>(sampleRate));
         mEnvSlow[i].init(static_cast<float>(sampleRate));
+        mEnvLow[i].init(static_cast<float>(sampleRate));
+        mEnvLowSlow[i].init(static_cast<float>(sampleRate));
+        mEnvHigh[i].init(static_cast<float>(sampleRate));
+        mEnvHighSlow[i].init(static_cast<float>(sampleRate));
     }
+
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate = sampleRate;
+    spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
+    spec.numChannels = 2;
+
+    LP.reset();
+    HP.reset();
+    LP.setType(juce::dsp::LinkwitzRileyFilterType::lowpass);
+    HP.setType(juce::dsp::LinkwitzRileyFilterType::highpass);
+    LP.prepare(spec);
+    HP.prepare(spec);
 }
 
 void DrumDecapitatorAudioProcessor::releaseResources()
 {
 	waveViewer.clear();
+	InputViewer.clear();
+	CurveViewer.clear();
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -199,80 +244,166 @@ void DrumDecapitatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
     const float deltaAtk = *parameters.getRawParameterValue("deltaAtk");
     const float rel1 = *parameters.getRawParameterValue("rel1");
     const float offset = *parameters.getRawParameterValue("offset");
-    const float T = *parameters.getRawParameterValue("transient");
-    const float S = *parameters.getRawParameterValue("sustain");
+    const float TLow  = *parameters.getRawParameterValue("transientLow");
+    const float SLow  = *parameters.getRawParameterValue("sustainLow");
+    const float THigh = *parameters.getRawParameterValue("transientHigh");
+    const float SHigh = *parameters.getRawParameterValue("sustainHigh");
     const float mix = *parameters.getRawParameterValue("mix");
-    const bool monitor = *parameters.getRawParameterValue("delta");
+    const bool lowMute  = *parameters.getRawParameterValue("lowMute");
+    const bool lowSolo  = *parameters.getRawParameterValue("lowSolo");
+    const bool highMute = *parameters.getRawParameterValue("highMute");
+    const bool highSolo = *parameters.getRawParameterValue("highSolo");
+
+    const float clippingcurve = *parameters.getRawParameterValue("clipperCurve");
+    const float thresholdDB = *parameters.getRawParameterValue("clipperThresholdDB");
+    const float crossover = *parameters.getRawParameterValue("CrossoverFreq");
+
+    //const bool monitor = *parameters.getRawParameterValue("delta");
 
     for (int ch = 0; ch < 2; ++ch) {
+        // full-band envelopes (kept initialised, not used below)
         mEnv[ch].setAttackMs(att1);
         mEnv[ch].setReleaseMs(rel1);
         mEnvSlow[ch].setAttackMs(att1 + deltaAtk);
         mEnvSlow[ch].setReleaseMs(rel1);
+
+        // low-band envelopes
+        mEnvLow[ch].setAttackMs(att1);
+        mEnvLow[ch].setReleaseMs(rel1);
+        mEnvLowSlow[ch].setAttackMs(att1 + deltaAtk);
+        mEnvLowSlow[ch].setReleaseMs(rel1);
+
+        // high-band envelopes
+        mEnvHigh[ch].setAttackMs(att1);
+        mEnvHigh[ch].setReleaseMs(rel1);
+        mEnvHighSlow[ch].setAttackMs(att1 + deltaAtk);
+        mEnvHighSlow[ch].setReleaseMs(rel1);
+
+        clippers[ch].setParameters(clippingcurve, thresholdDB);
     }
 
-    juce::AudioBuffer<float> processedBuffer(buffer.getNumChannels(), buffer.getNumSamples());
+    // update crossover
+    LP.setCutoffFrequency(crossover);
+    HP.setCutoffFrequency(crossover);
+
+
+	juce::AudioBuffer<float> inputBuffer(buffer.getNumChannels(), buffer.getNumSamples());
+	juce::AudioBuffer<float> curveBuffer(buffer.getNumChannels(), buffer.getNumSamples());
+    juce::AudioBuffer<float> lowBuffer(buffer.getNumChannels(), buffer.getNumSamples());
+    juce::AudioBuffer<float> highBuffer(buffer.getNumChannels(), buffer.getNumSamples());
+    for (int channel = 0; channel < totalNumInputChannels; ++channel)
+    {
+        inputBuffer.copyFrom(channel, 0, buffer, channel, 0, buffer.getNumSamples());
+        lowBuffer.copyFrom(channel, 0, buffer, channel, 0, buffer.getNumSamples());
+        highBuffer.copyFrom(channel, 0, buffer, channel, 0, buffer.getNumSamples());
+        // scale input display buffer to 2/3 for visualization only
+        auto* inPtr = inputBuffer.getWritePointer(channel);
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+            inPtr[i] *= (2.0f / 3.0f);
+    }
+
+    // Split bands
+    {
+        juce::dsp::AudioBlock<float> lowBlock (lowBuffer);
+        juce::dsp::AudioBlock<float> highBlock (highBuffer);
+        juce::dsp::ProcessContextReplacing<float> ctxLow (lowBlock);
+        juce::dsp::ProcessContextReplacing<float> ctxHigh (highBlock);
+        LP.process (ctxLow);
+        HP.process (ctxHigh);
+    }
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer (channel);
-        auto* processedData = processedBuffer.getWritePointer(channel);
-        bool transientState = true;
+		auto* curveData = curveBuffer.getWritePointer(channel);
+        auto* inputData = inputBuffer.getWritePointer(channel);
+        auto* lowData = lowBuffer.getWritePointer(channel);
+        auto* highData = highBuffer.getWritePointer(channel);
+
 
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample) {
-			const float in = channelData[sample];
-            const float envDb = 20.0f * std::log10(std::max(std::abs(in), 1e-5f));
-            const float clampedEnv = std::max(0.0f, envDb + 100.0f);
+            const float in = inputData[sample];
 
-			const float deltaFast = mEnv[channel].process(clampedEnv);
-			const float deltaSlow = mEnvSlow[channel].process(clampedEnv);
-			const float deltaDiff = deltaFast - deltaSlow + offset;
+            // Low band magnitude in dB domain for envelope driving
+            const float lowEnvDb  = 20.0f * std::log10(std::max(std::abs(lowData[sample]),  1e-5f));
+            const float highEnvDb = 20.0f * std::log10(std::max(std::abs(highData[sample]), 1e-5f));
+            const float lowClamp  = std::max(0.0f, lowEnvDb + 100.0f);
+            const float highClamp = std::max(0.0f, highEnvDb + 100.0f);
 
-			transientState = (deltaDiff > 0.0f);
+            // Low band delta
+            const float lowFast = mEnvLow[channel].process(lowClamp);
+            const float lowSlow = mEnvLowSlow[channel].process(lowClamp);
+            const float lowDiff = lowFast - lowSlow + offset;
+            const bool lowTransient = (lowDiff > 0.0f);
+            const float lowTrans = std::max(0.0f, lowDiff);
+            const float lowSus   = std::max(0.0f, -lowDiff);
+            const float lowAdj = lowTransient ? (TLow < 0 ? lowTrans * TLow : lowTrans)
+                                              : (SLow < 0 ? lowSus   * SLow : lowSus);
+            const float lowCurve = std::pow(10.0f, lowAdj / 20.0f);
+            const float lowOut = (lowCurve >= 1.0f)
+                               ? (1.0f + (lowTransient ? TLow : SLow) * std::tanh(lowCurve - 1.0f))
+                               : lowCurve;
 
-            const float deltaTrans = std::max(0.0f, deltaDiff);
-			const float deltaSustain = std::max(0.0f, -deltaDiff);
+            // High band delta
+            const float highFast = mEnvHigh[channel].process(highClamp);
+            const float highSlow = mEnvHighSlow[channel].process(highClamp);
+            const float highDiff = highFast - highSlow + offset;
+            const bool highTransient = (highDiff > 0.0f);
+            const float highTrans = std::max(0.0f, highDiff);
+            const float highSus   = std::max(0.0f, -highDiff);
+            const float highAdj = highTransient ? (THigh < 0 ? highTrans * THigh : highTrans)
+                                                : (SHigh < 0 ? highSus   * SHigh : highSus);
+            const float highCurve = std::pow(10.0f, highAdj / 20.0f);
+            const float highOut = (highCurve >= 1.0f)
+                                ? (1.0f + (highTransient ? THigh : SHigh) * std::tanh(highCurve - 1.0f))
+                                : highCurve;
 
-            float adjustedTrans = transientState ?
-                (T < 0 ? deltaTrans * T : deltaTrans) :
-                (S < 0 ? deltaSustain * S : deltaSustain);
+            // Apply gains to bands
+            const float lowShaped  = lowOut  * lowData[sample];
+            const float highShaped = highOut * highData[sample];
+            const bool anySolo = (lowSolo || highSolo);
+            const bool passLow  = anySolo ? lowSolo  : !lowMute;
+            const bool passHigh = anySolo ? highSolo : !highMute;
+            const float shaped = (passLow ? lowShaped : 0.0f) + (passHigh ? highShaped : 0.0f);
 
-            // Calculate gain curve
-            float curve = std::pow(10.0f, adjustedTrans / 20.0f);
-            float out;
+            // Effective gain for visualisation (pre-clip)
+            const float effGain = std::abs(in) > 1e-6f ? std::abs(shaped) / std::max(std::abs(in), 1e-6f) : 1.0f;
+            curveData[sample] = std::log(std::max(effGain, 1e-5f));
 
-            if (curve >= 1.0f) {
-                const float modifier = transientState ? T : S;
-                out = 1.0f + modifier * std::tanh(curve - 1.0f);
-            }
-            else {
-                out = curve;
-            }
+            // Optional dry/wet mix
+            const float mixed = mix * shaped + (1.0f - mix) * in;
 
-            if (monitor) {
-				channelData[sample] = out / 3.0f; // Monitor output
-			}
-            else {
-                channelData[sample] = out * in;
-            }
-
-            processedData[sample] = channelData[sample] * (2.0f / 3.0f);
-
+            // Clip and write output
+            channelData[sample] = clippers[channel].processSample(mixed);
+            
         }
     }
 
-    waveViewer.pushBuffer(processedBuffer);
-    const float curve = *parameters.getRawParameterValue("clipperCurve");
-    const float thresholdDB = *parameters.getRawParameterValue("clipperThresholdDB");
+	InputViewer.pushBuffer(inputBuffer);
+    //CurveViewer.pushBuffer(curveBuffer);
+    //waveViewer will show final, clipped output buffer
 
+    /*
     for (int ch = 0; ch < std::min(2, buffer.getNumChannels()); ++ch) {
-        clippers[ch].setParameters(curve, thresholdDB);
+        clippers[ch].setParameters(clippingcurve, thresholdDB);
         auto* channelData = buffer.getWritePointer(ch);
 
         for (int i = 0; i < buffer.getNumSamples(); ++i) {
             channelData[i] = clippers[ch].processSample(channelData[i]);
         }
     }
+    */
+
+    // push scaled (2/3) final output to WaveViewer for visualization
+    juce::AudioBuffer<float> outDisplay(buffer.getNumChannels(), buffer.getNumSamples());
+    for (int ch = 0; ch < totalNumInputChannels; ++ch)
+    {
+        outDisplay.copyFrom(ch, 0, buffer, ch, 0, buffer.getNumSamples());
+        auto* p = outDisplay.getWritePointer(ch);
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+            p[i] *= (2.0f / 3.0f);
+    }
+    waveViewer.pushBuffer(outDisplay);
 }
 
 //==============================================================================

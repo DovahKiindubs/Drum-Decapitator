@@ -57,13 +57,24 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
 	juce::AudioProcessorValueTreeState parameters;
-    juce::AudioVisualiserComponent waveViewer;
+    juce::AudioVisualiserComponent waveViewer, InputViewer, CurveViewer;
 
 private:
     //==============================================================================
     std::array<dsp1d::mod::Envelope, 2> mEnv;      // Fast envelope per channel
     std::array<dsp1d::mod::Envelope, 2> mEnvSlow;
+    // Separate envelopes for band-split processing
+    std::array<dsp1d::mod::Envelope, 2> mEnvLow;
+    std::array<dsp1d::mod::Envelope, 2> mEnvLowSlow;
+    std::array<dsp1d::mod::Envelope, 2> mEnvHigh;
+    std::array<dsp1d::mod::Envelope, 2> mEnvHighSlow;
     std::array<SoftClipper, 2> clippers;
+
+	using Filter = juce::dsp::LinkwitzRileyFilter<float>;
+    Filter LP, HP;
+
+	std::array<juce::AudioBuffer<float>, 2> filterBuffers;
+
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DrumDecapitatorAudioProcessor)
 };

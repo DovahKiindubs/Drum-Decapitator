@@ -24,6 +24,7 @@ public:
 	}
 
     float processSample(float x) noexcept {
+		x = x / thresholdLinear;
         return full_process(x, curve, thresholdLinear);
     }
 

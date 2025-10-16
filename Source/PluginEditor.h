@@ -38,7 +38,13 @@ private:
     juce::Slider mixSlider;
     juce::Slider bufferSizeSlider;
     juce::Slider clipperCurveSlider, clipperThresholdSlider;
+    juce::Slider crossoverSlider;
     juce::ToggleButton deltaButton;
+    // Band controls
+    juce::Slider transientLowSlider, sustainLowSlider;
+    juce::Slider transientHighSlider, sustainHighSlider;
+    juce::ToggleButton lowMuteButton, lowSoloButton;
+    juce::ToggleButton highMuteButton, highSoloButton;
 
     std::vector<SliderParamInfo> sliders;
 
@@ -50,6 +56,12 @@ private:
     std::unique_ptr<SliderAttachment> mixAttachment;
     std::unique_ptr<ButtonAttachment> deltaAttachment;
     std::unique_ptr<SliderAttachment> clipperCurveAttachment, clipperThresholdAttachment;
+    std::unique_ptr<SliderAttachment> crossoverAttachment;
+    // Band attachments
+    std::unique_ptr<SliderAttachment> transientLowAttachment, sustainLowAttachment;
+    std::unique_ptr<SliderAttachment> transientHighAttachment, sustainHighAttachment;
+    std::unique_ptr<ButtonAttachment> lowMuteAttachment, lowSoloAttachment;
+    std::unique_ptr<ButtonAttachment> highMuteAttachment, highSoloAttachment;
 
 
     DrumDecapitatorAudioProcessor& audioProcessor;

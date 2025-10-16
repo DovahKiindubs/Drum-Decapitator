@@ -40,16 +40,65 @@ DrumDecapitatorAudioProcessorEditor::DrumDecapitatorAudioProcessorEditor (DrumDe
     sustainSlider.setName("Sustain");
     mixSlider.setName("Mix");
 
+    // Per-band sliders and buttons
+    addAndMakeVisible(transientLowSlider);
+    addAndMakeVisible(sustainLowSlider);
+    addAndMakeVisible(transientHighSlider);
+    addAndMakeVisible(sustainHighSlider);
+    transientLowAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        audioProcessor.parameters, "transientLow", transientLowSlider);
+    sustainLowAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        audioProcessor.parameters, "sustainLow", sustainLowSlider);
+    transientHighAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        audioProcessor.parameters, "transientHigh", transientHighSlider);
+    sustainHighAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        audioProcessor.parameters, "sustainHigh", sustainHighSlider);
 
-	addAndMakeVisible(audioProcessor.waveViewer);
-    audioProcessor.waveViewer.setColours(juce::Colours::black, juce::Colours::white);
+    for (auto* s : { &transientLowSlider, &sustainLowSlider, &transientHighSlider, &sustainHighSlider })
+    {
+        s->setSliderStyle(juce::Slider::RotaryVerticalDrag);
+        s->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 20);
+    }
+
+    addAndMakeVisible(lowMuteButton);
+    addAndMakeVisible(lowSoloButton);
+    addAndMakeVisible(highMuteButton);
+    addAndMakeVisible(highSoloButton);
+    lowMuteAttachment = std::make_unique<ButtonAttachment>(audioProcessor.parameters, "lowMute", lowMuteButton);
+    lowSoloAttachment = std::make_unique<ButtonAttachment>(audioProcessor.parameters, "lowSolo", lowSoloButton);
+    highMuteAttachment = std::make_unique<ButtonAttachment>(audioProcessor.parameters, "highMute", highMuteButton);
+    highSoloAttachment = std::make_unique<ButtonAttachment>(audioProcessor.parameters, "highSolo", highSoloButton);
+
+    transientLowSlider.setName("Trans Low");
+    sustainLowSlider.setName("Sus Low");
+    transientHighSlider.setName("Trans High");
+    sustainHighSlider.setName("Sus High");
+    lowMuteButton.setButtonText("Low Mute");
+    lowSoloButton.setButtonText("Low Solo");
+    highMuteButton.setButtonText("High Mute");
+    highSoloButton.setButtonText("High Solo");
+
+    addAndMakeVisible(audioProcessor.waveViewer);
+    audioProcessor.waveViewer.setColours(juce::Colours::black, juce::Colours::orange);
+
+    addAndMakeVisible(audioProcessor.InputViewer);
+    audioProcessor.InputViewer.setColours(juce::Colours::transparentBlack, juce::Colours::white);
+    audioProcessor.InputViewer.setOpaque(false);
+
+    addAndMakeVisible(audioProcessor.CurveViewer);
+    audioProcessor.CurveViewer.setColours(juce::Colours::transparentBlack, juce::Colours::blue);
+	audioProcessor.CurveViewer.setOpaque(false);
+
+    addAndMakeVisible(bufferSizeSlider);
     bufferSizeSlider.setRange(256, 4096, 1);
     bufferSizeSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     bufferSizeSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 80, 20);
-    addAndMakeVisible(bufferSizeSlider);
+
 
     bufferSizeSlider.onValueChange = [this]() {
         audioProcessor.waveViewer.setBufferSize((int)bufferSizeSlider.getValue());
+        audioProcessor.InputViewer.setBufferSize((int)bufferSizeSlider.getValue());
+        audioProcessor.CurveViewer.setBufferSize((int)bufferSizeSlider.getValue());
         };
 
     addAndMakeVisible(clipperCurveSlider);
@@ -67,8 +116,15 @@ DrumDecapitatorAudioProcessorEditor::DrumDecapitatorAudioProcessorEditor (DrumDe
         audioProcessor.parameters, "clipperThresholdDB", clipperThresholdSlider
     );
 
+    addAndMakeVisible(crossoverSlider);
+    crossoverSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
+    crossoverSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 20);
+    crossoverAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        audioProcessor.parameters, "CrossoverFreq", crossoverSlider);
+
     clipperCurveSlider.setName("Clipper Curve");
     clipperThresholdSlider.setName("Clipper Threshold");
+    crossoverSlider.setName("Crossover");
 
     setSize (700, 700);
 }
@@ -101,9 +157,15 @@ void DrumDecapitatorAudioProcessorEditor::paint (juce::Graphics& g)
         juce::Justification::centred, false);
     g.drawText("Mix", mixSlider.getBounds().translated(0, -40),
         juce::Justification::centred, false);
+    g.drawText("Trans Low", transientLowSlider.getBounds().translated(0, -40), juce::Justification::centred, false);
+    g.drawText("Sus Low", sustainLowSlider.getBounds().translated(0, -40), juce::Justification::centred, false);
+    g.drawText("Trans High", transientHighSlider.getBounds().translated(0, -40), juce::Justification::centred, false);
+    g.drawText("Sus High", sustainHighSlider.getBounds().translated(0, -40), juce::Justification::centred, false);
     g.drawText("Hard/Soft", clipperCurveSlider.getBounds().translated(0, -40),
         juce::Justification::centred, false);
     g.drawText("Ceiling", clipperThresholdSlider.getBounds().translated(0, -40),
+        juce::Justification::centred, false);
+    g.drawText("X-Over", crossoverSlider.getBounds().translated(0, -40),
         juce::Justification::centred, false);
 }
 
@@ -114,6 +176,7 @@ void DrumDecapitatorAudioProcessorEditor::resized()
     const int topMargin = 50;
     const int waveViewerHeight = 200;
     const int row2Y = topMargin + sliderSize + 40;
+    const int row3Y = row2Y + sliderSize + 60;
 
     attackSlider.setBounds(10, topMargin, sliderSize, sliderSize);
     deltaAttackSlider.setBounds(100, topMargin, sliderSize, sliderSize);
@@ -124,8 +187,20 @@ void DrumDecapitatorAudioProcessorEditor::resized()
     mixSlider.setBounds(550, topMargin, sliderSize, sliderSize);
     clipperCurveSlider.setBounds(10, row2Y, sliderSize, sliderSize);
     clipperThresholdSlider.setBounds(100, row2Y, sliderSize, sliderSize);
+    crossoverSlider.setBounds(550, row2Y, sliderSize, sliderSize);
+    // Per-band controls layout
+    transientLowSlider.setBounds(190, row2Y, sliderSize, sliderSize);
+    sustainLowSlider.setBounds(280, row2Y, sliderSize, sliderSize);
+    transientHighSlider.setBounds(370, row2Y, sliderSize, sliderSize);
+    sustainHighSlider.setBounds(460, row2Y, sliderSize, sliderSize);
+    lowMuteButton.setBounds(10, row3Y, 100, 24);
+    lowSoloButton.setBounds(120, row3Y, 100, 24);
+    highMuteButton.setBounds(230, row3Y, 100, 24);
+    highSoloButton.setBounds(340, row3Y, 100, 24);
     int waveViewerTop = topMargin + sliderSize + sliderSpacing;
-    audioProcessor.waveViewer.setBounds(10, waveViewerTop + 200, getWidth() - 40, waveViewerHeight);
+    audioProcessor.waveViewer.setBounds(10, waveViewerTop + 240, getWidth() - 40, waveViewerHeight);
+    audioProcessor.InputViewer.setBounds(10, waveViewerTop + 240, getWidth() - 40, waveViewerHeight);
+    audioProcessor.CurveViewer.setBounds(10, waveViewerTop + 240, getWidth() - 40, waveViewerHeight);
     bufferSizeSlider.setBounds(10, 10, getWidth() - 20, 40);
 
 }
